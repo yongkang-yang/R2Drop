@@ -51,9 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             let image = Bundle.main.image(forResource: "MenuBarIcon")
                 ?? NSImage(systemSymbolName: "icloud.and.arrow.up", accessibilityDescription: nil)
-            // The cloud is wide; keep its height at the menu bar's usual 14 pt.
+            // The cloud is over twice as wide as it is tall, so it is drawn
+            // shorter than the square icons beside it to take up about as much room.
             if let image, image.size.height > 0 {
-                image.size = NSSize(width: 14 * image.size.width / image.size.height, height: 14)
+                image.size = NSSize(width: 11 * image.size.width / image.size.height, height: 11)
             }
             image?.isTemplate = true
             image?.accessibilityDescription = "R2Drop"
