@@ -92,4 +92,24 @@ final class R2Tests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "R2 returned HTTP 403: AccessDenied — Access Denied.")
         }
     }
+
+    func testCredentialShapeIsChecked() {
+        let good = R2Settings(accountID: "a", bucket: "b", accessKeyID: String(repeating: "a", count: 32),
+                              secretAccessKey: String(repeating: "f", count: 64), publicBaseURL: "u")
+        XCTAssertEqual(good.credentialProblems, [])
+        var token = good
+        token.secretAccessKey = "cfut_" + String(repeating: "x", count: 35)
+        XCTAssertEqual(token.credentialProblems.count, 1)
+        XCTAssertTrue(token.credentialProblems[0].contains("this one is 40"))
+    }
+
+    /// Cross-checked with botocore's S3SigV4Auth for the same request and timestamp.
+    func testMatchesBotocoreForAnR2Upload() {
+        let settings = R2Settings(accountID: "0123abcd", bucket: "images", accessKeyID: "AKIDEXAMPLE",
+                                  secretAccessKey: "SECRET/abc+123", publicBaseURL: "https://x")
+        let request = R2Client(settings: settings).putRequest(key: "2026/09/clipboard-a1b2c3.png", body: Data("hello".utf8),
+                                                              contentType: "image/png", date: Date(timeIntervalSince1970: 1_790_000_000))
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Authorization")!
+            .hasSuffix("Signature=8f4b600ca8ededfd5c63d5695dc5c56498183379789b5008129bb17961c0ee2e"))
+    }
 }

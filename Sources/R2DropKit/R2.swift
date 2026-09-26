@@ -70,6 +70,24 @@ public struct R2Settings: Equatable, Sendable {
         return trimmed
     }
 
+    /// R2's S3 credentials have a fixed shape: a 32-character access key ID
+    /// and a 64-character secret, both hexadecimal. Anything else is usually
+    /// the Cloudflare API token pasted in the wrong field, which R2 answers
+    /// with SignatureDoesNotMatch.
+    public var credentialProblems: [String] {
+        func isHex(_ value: String, _ count: Int) -> Bool {
+            value.trimmed.count == count && value.trimmed.allSatisfy(\.isHexDigit)
+        }
+        var problems: [String] = []
+        if !accessKeyID.trimmed.isEmpty, !isHex(accessKeyID, 32) {
+            problems.append("The Access Key ID should be 32 hexadecimal characters; this one is \(accessKeyID.trimmed.count).")
+        }
+        if !secretAccessKey.trimmed.isEmpty, !isHex(secretAccessKey, 64) {
+            problems.append("The Secret Access Key should be 64 hexadecimal characters; this one is \(secretAccessKey.trimmed.count). Use the S3 secret shown when the R2 API token was created, not the token value itself.")
+        }
+        return problems
+    }
+
     public func publicURL(for key: String) -> String {
         var base = publicBaseURL.trimmed
         while base.hasSuffix("/") { base.removeLast() }
@@ -174,7 +192,11 @@ public struct R2Client: Sendable {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            throw R2Error("R2 returned HTTP \(status)\(Self.s3Message(data).map { ": \($0)" } ?? "").")
+            let message = Self.s3Message(data)
+            if message?.hasPrefix("SignatureDoesNotMatch") == true {
+                throw R2Error("R2 rejected the signature: the Secret Access Key doesn't belong to this Access Key ID. Check both in Settings.")
+            }
+            throw R2Error("R2 returned HTTP \(status)\(message.map { ": \($0)" } ?? "").")
         }
     }
 

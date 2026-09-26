@@ -48,6 +48,12 @@ private struct R2SettingsView: View {
                 SecureField("Secret Access Key", text: $secret)
                     .onChange(of: secret) { _, value in Keychain.write(value, for: AppSettings.secretAccount) }
                 TextField("Public Base URL", text: $publicBaseURL, prompt: Text("https://img.example.com"))
+                ForEach(problems, id: \.self) { problem in
+                    Label(problem, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } header: {
                 Text("Bucket")
             } footer: {
@@ -67,7 +73,12 @@ private struct R2SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 420)
+        .frame(width: 520, height: 460)
+    }
+
+    private var problems: [String] {
+        R2Settings(accountID: accountID, bucket: bucket, accessKeyID: accessKeyID,
+                   secretAccessKey: secret, publicBaseURL: publicBaseURL).credentialProblems
     }
 }
 
