@@ -79,6 +79,7 @@ struct UploadResult {
     let filename: String
 }
 
+@MainActor
 enum Uploader {
     /// Uploads one local file and returns its public URL. `slug` names the
     /// object when given; otherwise the file name does. Every success is
