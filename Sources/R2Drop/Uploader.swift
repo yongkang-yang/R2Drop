@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import AppKit
+import R2DropKit
+
+enum AppSettings {
+    static let accountIDKey = "accountID"
+    static let bucketKey = "bucket"
+    static let accessKeyIDKey = "accessKeyID"
+    static let publicBaseURLKey = "publicBaseURL"
+    static let formatKey = "defaultFormat"
+    static let secretAccount = "secretAccessKey"
+
+    static var r2: R2Settings {
+        let defaults = UserDefaults.standard
+        return R2Settings(accountID: defaults.string(forKey: accountIDKey) ?? "",
+                          bucket: defaults.string(forKey: bucketKey) ?? "",
+                          accessKeyID: defaults.string(forKey: accessKeyIDKey) ?? "",
+                          secretAccessKey: Keychain.read(secretAccount),
+                          publicBaseURL: defaults.string(forKey: publicBaseURLKey) ?? "")
+    }
+
+    static var format: OutputFormat {
+        OutputFormat(rawValue: UserDefaults.standard.string(forKey: formatKey) ?? "") ?? .markdown
+    }
+
+    static var isConfigured: Bool { (try? r2.validated()) != nil }
+}
+
+/// The most recent upload, from any command, for the menu's quick copy and
+/// the preview window. A small thumbnail is kept beside it so the menu never
+/// has to download the image.
+struct LastUpload: Codable, Equatable {
+    let key: String
+    let url: String
+    let filename: String
+    let uploadedAt: Date
+
+    private static let storageKey = "lastUpload"
+
+    static var saved: LastUpload? {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return nil }
+        return try? JSONDecoder().decode(LastUpload.self, from: data)
+    }
+
+    func save(thumbnailFrom file: URL) {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: Self.storageKey)
+        }
+        if let image = NSImage(contentsOf: file), let thumbnail = image.thumbnail(maxSide: 64),
+           let tiff = thumbnail.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            try? FileManager.default.createDirectory(at: Self.thumbnailURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? png.write(to: Self.thumbnailURL)
+        } else {
+            try? FileManager.default.removeItem(at: Self.thumbnailURL)
+        }
+    }
+
+    static var thumbnail: NSImage? { NSImage(contentsOf: thumbnailURL) }
+
+    static let thumbnailURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("R2Drop/last-upload-thumbnail.png")
+}
+
+extension NSImage {
+    func thumbnail(maxSide: CGFloat) -> NSImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale = min(1, maxSide / max(size.width, size.height))
+        let target = NSSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+        return NSImage(size: target, flipped: false) { rect in
+            self.draw(in: rect)
+            return true
+        }
+    }
+}
+
+struct UploadResult {
+    let key: String
+    let url: String
+    let filename: String
+}
+
+enum Uploader {
+    /// Uploads one local file and returns its public URL. `slug` names the
+    /// object when given; otherwise the file name does. Every success is
+    /// recorded as the last upload.
+    static func upload(_ file: URL, slug: String? = nil, settings: R2Settings) async throws -> UploadResult {
+        let filename = file.lastPathComponent
+        let body: Data
+        do {
+            body = try Data(contentsOf: file)
+        } catch {
+            throw R2Error("Could not read \(filename).")
+        }
+        let key = ObjectKey.build(originalName: filename, slug: slug)
+        let contentType = ObjectKey.contentType(forExtension: (key as NSString).pathExtension)
+        try await R2Client(settings: settings).put(key: key, body: body, contentType: contentType)
+        let result = UploadResult(key: key, url: settings.publicURL(for: key), filename: filename)
+        LastUpload(key: key, url: result.url, filename: filename, uploadedAt: Date()).save(thumbnailFrom: file)
+        return result
+    }
+
+    /// Uploads files one by one, copies every link that worked (one per
+    /// line), and reports the rest.
+    static func uploadAndCopy(_ files: [URL], slug: String? = nil, format: OutputFormat = AppSettings.format) async {
+        let settings: R2Settings
+        do {
+            settings = try AppSettings.r2.validated()
+        } catch {
+            HUD.shared.show(error.localizedDescription, style: .failure)
+            return
+        }
+        HUD.shared.show(files.count == 1 ? "Uploading…" : "Uploading \(files.count) images…", style: .progress)
+        var links: [String] = []
+        var failures: [String] = []
+        for file in files {
+            do {
+                let result = try await upload(file, slug: files.count == 1 ? slug : nil, settings: settings)
+                links.append(format.format(url: result.url, filename: result.filename))
+            } catch {
+                failures.append("\(file.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        if !links.isEmpty {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(links.joined(separator: "\n"), forType: .string)
+        }
+        if let first = failures.first {
+            let title = links.isEmpty ? "Upload failed" : "Uploaded \(links.count), \(failures.count) failed"
+            HUD.shared.show("\(title) — \(first)", style: .failure)
+        } else if links.count == 1 {
+            HUD.shared.show("Copied \(format.label) link")
+        } else {
+            HUD.shared.show("Copied \(links.count) links")
+        }
+        NotificationCenter.default.post(name: .lastUploadChanged, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let lastUploadChanged = Notification.Name("lastUploadChanged")
+}
