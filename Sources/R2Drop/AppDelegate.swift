@@ -4,7 +4,7 @@ import R2DropKit
 import SwiftUI
 
 enum Command: String, CaseIterable {
-    case captureAndUpload, uploadClipboard, uploadImage, uploadFinderSelection, showLastUpload
+    case captureAndUpload, uploadClipboard, uploadImage, uploadFinderSelection, showLastUpload, captureToInbox
 
     var title: String {
         switch self {
@@ -13,6 +13,7 @@ enum Command: String, CaseIterable {
         case .uploadImage: "Upload Image…"
         case .uploadFinderSelection: "Upload Finder Selection"
         case .showLastUpload: "Preview Last Upload"
+        case .captureToInbox: "Capture to BlogWatcher"
         }
     }
 
@@ -23,6 +24,7 @@ enum Command: String, CaseIterable {
         case .uploadImage: "photo"
         case .uploadFinderSelection: "folder"
         case .showLastUpload: "eye"
+        case .captureToInbox: "tray.and.arrow.down"
         }
     }
 
@@ -33,6 +35,7 @@ enum Command: String, CaseIterable {
         case .uploadImage: "Pick one or more images, a format and an optional name."
         case .uploadFinderSelection: "Upload the images selected in Finder."
         case .showLastUpload: "Preview the most recent upload and copy its link."
+        case .captureToInbox: "Screenshot a region or window and save it, with its text, to your BlogWatcher inbox."
         }
     }
 }
@@ -93,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .uploadImage: uploadImage()
         case .uploadFinderSelection: uploadFinderSelection()
         case .showLastUpload: showLastUpload()
+        case .captureToInbox: captureToInbox()
         }
     }
 
@@ -107,11 +111,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func captureAndUpload() {
+        capture { await Uploader.uploadAndCopy([$0]) }
+    }
+
+    private func captureToInbox() {
+        do {
+            _ = try AppSettings.inbox.validated()
+        } catch {
+            HUD.shared.show(error.localizedDescription, style: .failure)
+            return
+        }
+        capture { await Uploader.uploadToInbox($0) }
+    }
+
+    /// Takes an interactive screenshot and hands the file to `upload`.
+    private func capture(then upload: @escaping (URL) async -> Void) {
         // Fail fast on missing settings before opening the crosshair.
         guard !isBusy, guardConfigured() else { return }
         if !CGPreflightScreenCaptureAccess() {
             CGRequestScreenCaptureAccess()
-            HUD.shared.show("Capture & Upload needs Screen Recording access. Turn it on in System Settings → Privacy & Security.",
+            HUD.shared.show("Capturing needs Screen Recording access. Turn it on in System Settings → Privacy & Security.",
                             style: .failure)
             return
         }
@@ -120,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             defer { isBusy = false }
             guard let shot = await ImageSources.captureScreenshot() else { return }  // Esc: nothing to do.
             defer { shot.remove() }
-            await Uploader.uploadAndCopy([shot.url])
+            await upload(shot.url)
         }
     }
 
@@ -278,6 +297,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(sectionHeader("Upload"))
         for command in [Command.captureAndUpload, .uploadClipboard, .uploadImage, .uploadFinderSelection] {
             menu.addItem(commandItem(command))
+        }
+        if (try? AppSettings.inbox.validated()) != nil {
+            menu.addItem(.separator())
+            menu.addItem(commandItem(.captureToInbox))
         }
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",")

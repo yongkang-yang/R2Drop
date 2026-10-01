@@ -23,6 +23,12 @@ the menu bar menu.
 - **Preview Last Upload** — the most recent upload at full size, with its key,
   time and URL, and buttons to copy the link or open it.
 - **Drop images on the menu bar icon** to upload them.
+- **Capture to BlogWatcher** — the same interactive screenshot, uploaded and
+  saved to a [BlogWatcher](https://github.com/yongkang-yang/blogwatcher) inbox
+  together with the text recognised in it (on this Mac, Chinese and English),
+  so it can be found by searching. The clipboard is left alone. Set the
+  deployment's capture URL and key under Settings → BlogWatcher; the command
+  appears in the menu once they are set.
 
 The menu shows the last upload with its thumbnail; click it to copy its link
 again in your default format.
@@ -58,6 +64,8 @@ Uploads are stored as `yyyy/mm/<name>-<hash>.<ext>`, e.g.
 `2026/09/survey2-team-list-a8f31c.png`, exactly as the extension named them. The
 trailing hash avoids collisions; the name is the file's, or the one given in
 Upload Image.
+Screenshots saved to BlogWatcher get a 16-character hash instead of 6: the
+inbox is private, and the link is all that keeps its images so.
 
 ## Build
 

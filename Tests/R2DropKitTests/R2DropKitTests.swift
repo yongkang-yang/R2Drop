@@ -113,3 +113,91 @@ final class R2Tests: XCTestCase {
             .hasSuffix("Signature=8f4b600ca8ededfd5c63d5695dc5c56498183379789b5008129bb17961c0ee2e"))
     }
 }
+
+final class InboxTests: XCTestCase {
+    private let settings = InboxSettings(endpoint: "https://bw.example.com/api/capture", key: "k3y")
+
+    private func reply(_ status: Int, _ body: String) -> InboxClient.Transport {
+        { request in (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!) }
+    }
+
+    func testSettingsValidation() throws {
+        XCTAssertEqual(try InboxSettings(endpoint: " https://bw.example.com/api/capture\n", key: " k3y ").validated(), settings)
+        for bad in [InboxSettings(endpoint: "", key: "k"), InboxSettings(endpoint: "https://bw.example.com", key: " ")] {
+            XCTAssertThrowsError(try bad.validated()) {
+                XCTAssertEqual(($0 as? R2Error)?.message, "Missing BlogWatcher settings. Set the capture URL and key in Settings.")
+            }
+        }
+        for bad in ["bw.example.com/api/capture", "ftp://bw.example.com/x", "https://"] {
+            XCTAssertThrowsError(try InboxSettings(endpoint: bad, key: "k").validated(), bad) {
+                XCTAssertEqual(($0 as? R2Error)?.message, "The BlogWatcher capture URL isn't a web address.")
+            }
+        }
+    }
+
+    func testSaveRequestCarriesLinksAndText() throws {
+        let client = InboxClient(settings: settings)
+        let request = client.saveRequest(images: ["https://img.example.com/2026/10/a-1.png"], text: "第一行\nline two")
+        XCTAssertEqual(request.url?.absoluteString, "https://bw.example.com/api/capture")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer k3y")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
+        XCTAssertEqual(body["images"] as? [String], ["https://img.example.com/2026/10/a-1.png"])
+        XCTAssertEqual(body["ocr"] as? String, "第一行\nline two")
+        XCTAssertEqual(body["source"] as? String, "r2drop")
+        let wordless = try XCTUnwrap(client.saveRequest(images: ["u"], text: "").httpBody)
+        XCTAssertNil((try JSONSerialization.jsonObject(with: wordless) as? [String: Any])?["ocr"])
+    }
+
+    func testSaveAnswersWithTheTitle() async throws {
+        let client = InboxClient(settings: settings, transport: reply(200, #"{"id": 1790863860091, "type": "image", "title": "第一行"}"#))
+        let title = try await client.save(images: ["u"], text: "第一行")
+        XCTAssertEqual(title, "第一行")
+    }
+
+    func testSaveErrorsSayWhatWentWrong() async {
+        func message(_ transport: @escaping InboxClient.Transport) async -> String? {
+            do {
+                try await InboxClient(settings: settings, transport: transport).save(images: ["u"], text: "")
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
+        }
+        var text = await message(reply(401, #"{"error": "unauthorized"}"#))
+        XCTAssertEqual(text, "BlogWatcher rejected the key. Check it in Settings.")
+        text = await message(reply(400, #"{"error": "nothing to capture"}"#))
+        XCTAssertEqual(text, "BlogWatcher returned HTTP 400: nothing to capture.")
+        text = await message(reply(502, "<html>Bad Gateway</html>"))
+        XCTAssertEqual(text, "BlogWatcher returned HTTP 502.")
+        text = await message { _ in throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(text?.hasPrefix("Could not reach BlogWatcher: "), true)
+    }
+
+    func testLongerHashesForInboxImages() {
+        XCTAssertEqual(ObjectKey.randomHash(bytes: 8).count, 16)
+    }
+
+    func testReadsTheTextInAnImage() async throws {
+        // Black text on white, the way a screenshot of a post looks.
+        let size = NSSize(width: 900, height: 260)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 44), .foregroundColor: NSColor.black]
+            ("Intelligence inbox 2026" as NSString).draw(at: NSPoint(x: 40, y: 150), withAttributes: attributes)
+            ("今天的天气很好" as NSString).draw(at: NSPoint(x: 40, y: 60), withAttributes: attributes)
+            return true
+        }
+        let png = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation))?.representation(using: .png, properties: [:]))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("r2drop-ocr-\(UUID().uuidString).png")
+        try png.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let text = await TextRecognizer.text(in: file)
+        XCTAssertEqual(text, "Intelligence inbox 2026\n今天的天气很好")
+        let nothing = await TextRecognizer.text(in: URL(fileURLWithPath: "/nonexistent/image.png"))
+        XCTAssertEqual(nothing, "")
+    }
+}

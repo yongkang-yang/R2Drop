@@ -142,8 +142,8 @@ public enum ObjectKey {
         return String(format: "%04d/%02d/", parts.year ?? 0, parts.month ?? 0) + "\(name).\(ext.isEmpty ? "png" : ext)"
     }
 
-    public static func randomHash() -> String {
-        (0..<3).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+    public static func randomHash(bytes: Int = 3) -> String {
+        (0..<bytes).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
     }
 }
 

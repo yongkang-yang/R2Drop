@@ -9,6 +9,8 @@ enum AppSettings {
     static let publicBaseURLKey = "publicBaseURL"
     static let formatKey = "defaultFormat"
     static let secretAccount = "secretAccessKey"
+    static let inboxEndpointKey = "inboxEndpoint"
+    static let inboxKeyAccount = "inboxKey"
 
     static var r2: R2Settings {
         let defaults = UserDefaults.standard
@@ -24,6 +26,11 @@ enum AppSettings {
     }
 
     static var isConfigured: Bool { (try? r2.validated()) != nil }
+
+    static var inbox: InboxSettings {
+        InboxSettings(endpoint: UserDefaults.standard.string(forKey: inboxEndpointKey) ?? "",
+                      key: Keychain.read(inboxKeyAccount))
+    }
 }
 
 /// The most recent upload, from any command, for the menu's quick copy and
@@ -84,7 +91,8 @@ enum Uploader {
     /// Uploads one local file and returns its public URL. `slug` names the
     /// object when given; otherwise the file name does. Every success is
     /// recorded as the last upload.
-    static func upload(_ file: URL, slug: String? = nil, settings: R2Settings) async throws -> UploadResult {
+    static func upload(_ file: URL, slug: String? = nil, hash: String = ObjectKey.randomHash(),
+                       settings: R2Settings) async throws -> UploadResult {
         let filename = file.lastPathComponent
         let body: Data
         do {
@@ -92,7 +100,7 @@ enum Uploader {
         } catch {
             throw R2Error("Could not read \(filename).")
         }
-        let key = ObjectKey.build(originalName: filename, slug: slug)
+        let key = ObjectKey.build(originalName: filename, slug: slug, hash: hash)
         let contentType = ObjectKey.contentType(forExtension: (key as NSString).pathExtension)
         try await R2Client(settings: settings).put(key: key, body: body, contentType: contentType)
         let result = UploadResult(key: key, url: settings.publicURL(for: key), filename: filename)
@@ -134,6 +142,34 @@ enum Uploader {
             HUD.shared.show("Copied \(links.count) links")
         }
         NotificationCenter.default.post(name: .lastUploadChanged, object: nil)
+    }
+}
+
+extension Uploader {
+    /// Uploads one image and saves it to the BlogWatcher inbox with the text
+    /// in it, so it can be found by searching. The clipboard is left alone.
+    static func uploadToInbox(_ file: URL) async {
+        let settings: R2Settings
+        let inbox: InboxSettings
+        do {
+            settings = try AppSettings.r2.validated()
+            inbox = try AppSettings.inbox.validated()
+        } catch {
+            HUD.shared.show(error.localizedDescription, style: .failure)
+            return
+        }
+        HUD.shared.show("Saving to BlogWatcher…", style: .progress)
+        do {
+            // Nothing else guards an inbox image but its link, so the link
+            // gets a longer random part than a shared one.
+            async let text = TextRecognizer.text(in: file)
+            let result = try await upload(file, hash: ObjectKey.randomHash(bytes: 8), settings: settings)
+            NotificationCenter.default.post(name: .lastUploadChanged, object: nil)
+            try await InboxClient(settings: inbox).save(images: [result.url], text: await text)
+            HUD.shared.show("Saved to BlogWatcher")
+        } catch {
+            HUD.shared.show("Not saved — \(error.localizedDescription)", style: .failure)
+        }
     }
 }
 

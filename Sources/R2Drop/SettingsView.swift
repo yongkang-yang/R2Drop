@@ -10,6 +10,7 @@ func makeSettingsWindow() -> NSWindow {
     let tabs = NSTabViewController()
     tabs.tabStyle = .toolbar
     tabs.addTabViewItem(settingsTab("R2", symbol: "cloud", R2SettingsView()))
+    tabs.addTabViewItem(settingsTab("BlogWatcher", symbol: "tray.and.arrow.down", InboxSettingsView()))
     tabs.addTabViewItem(settingsTab("Shortcuts", symbol: "keyboard", ShortcutsSettingsView()))
     tabs.addTabViewItem(settingsTab("General", symbol: "gearshape", GeneralSettingsView()))
 
@@ -82,6 +83,30 @@ private struct R2SettingsView: View {
     }
 }
 
+private struct InboxSettingsView: View {
+    @AppStorage(AppSettings.inboxEndpointKey) private var endpoint = ""
+    @State private var key = Keychain.read(AppSettings.inboxKeyAccount)
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Capture URL", text: $endpoint, prompt: Text("https://blogwatcher.example.com/api/capture"))
+                SecureField("Key", text: $key)
+                    .onChange(of: key) { _, value in Keychain.write(value, for: AppSettings.inboxKeyAccount) }
+            } header: {
+                Text("Inbox")
+            } footer: {
+                Text("Capture to BlogWatcher uploads a screenshot to your bucket, then saves its link and the text in it to your BlogWatcher inbox. Use the deployment's CAPTURE_KEY, or its sync key. The key is kept in your login keychain. Give the command a shortcut under Shortcuts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 520, height: 240)
+    }
+}
+
 private struct ShortcutsSettingsView: View {
     var body: some View {
         Form {
@@ -106,7 +131,7 @@ private struct ShortcutsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 380)
+        .frame(width: 520, height: 440)
     }
 }
 
