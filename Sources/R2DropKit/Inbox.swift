@@ -37,13 +37,23 @@ public struct InboxClient: Sendable {
         self.transport = transport
     }
 
+    /// Images already in R2, with the text recognised in them.
     public func saveRequest(images: [String], text: String) -> URLRequest {
+        var body: [String: Any] = ["images": images, "source": "r2drop"]
+        if !text.isEmpty { body["ocr"] = text }
+        return request(body)
+    }
+
+    /// A piece of text or a link; the inbox finds the link in it and labels it.
+    public func saveRequest(text: String) -> URLRequest {
+        request(["text": text, "source": "r2drop"])
+    }
+
+    private func request(_ body: [String: Any]) -> URLRequest {
         var request = URLRequest(url: URL(string: settings.endpoint)!, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("Bearer \(settings.key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["images": images, "source": "r2drop"]
-        if !text.isEmpty { body["ocr"] = text }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return request
     }
@@ -51,9 +61,18 @@ public struct InboxClient: Sendable {
     /// Returns the title the capture was saved under.
     @discardableResult
     public func save(images: [String], text: String) async throws -> String {
+        try await send(saveRequest(images: images, text: text))
+    }
+
+    @discardableResult
+    public func save(text: String) async throws -> String {
+        try await send(saveRequest(text: text))
+    }
+
+    private func send(_ request: URLRequest) async throws -> String {
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await transport(saveRequest(images: images, text: text))
+            (data, response) = try await transport(request)
         } catch {
             throw R2Error("Could not reach BlogWatcher: \(error.localizedDescription)")
         }

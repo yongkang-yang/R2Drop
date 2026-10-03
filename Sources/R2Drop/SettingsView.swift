@@ -140,6 +140,8 @@ private struct GeneralSettingsView: View {
     @State private var loginError: String?
     @AppStorage(ClipboardHistory.enabledKey) private var recordsClipboard = true
     @AppStorage(ClipboardHistory.limitKey) private var historyLimit = 200
+    @AppStorage(ClipboardHistory.maxAgeKey) private var historyMaxAge = 30
+    @AppStorage(ClipboardHistory.skipsTerminalsKey) private var skipsTerminals = false
     @State private var isConfirmingClear = false
 
     var body: some View {
@@ -157,7 +159,14 @@ private struct GeneralSettingsView: View {
                 Picker("Keep", selection: $historyLimit) {
                     ForEach(ClipboardHistory.limits, id: \.self) { Text("\($0) items").tag($0) }
                 }
-                .onChange(of: historyLimit) { ClipboardHistory.shared.trim() }
+                .onChange(of: historyLimit) { ClipboardHistory.shared.prune() }
+                Picker("Remove after", selection: $historyMaxAge) {
+                    ForEach(ClipboardHistory.maxAges, id: \.self) { days in
+                        Text(days == 0 ? "Never" : days == 365 ? "1 year" : "\(days) days").tag(days)
+                    }
+                }
+                .onChange(of: historyMaxAge) { ClipboardHistory.shared.prune() }
+                Toggle("Leave out copies from terminals", isOn: $skipsTerminals)
                 LabeledContent("History") {
                     Button("Clear History…") { isConfirmingClear = true }
                 }
@@ -169,7 +178,7 @@ private struct GeneralSettingsView: View {
             } header: {
                 Text("Clipboard History")
             } footer: {
-                Text("Text, images and files you copy, and every upload to R2, kept on this Mac. Open it from the menu, or give Clipboard History a shortcut under Shortcuts. Copies that password managers mark as concealed are never recorded.")
+                Text("Text, images and files you copy, and every upload to R2, kept on this Mac only and left out of Time Machine. Pinned items (⌘P in the history) are never removed. Copies from password managers, and anything that looks like a key, token or password, are never recorded. Open the history from the menu, or give Clipboard History a shortcut under Shortcuts.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -194,7 +203,7 @@ private struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 500)
+        .frame(width: 520, height: 580)
     }
 
     private func open(_ anchor: String) {

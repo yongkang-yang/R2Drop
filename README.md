@@ -33,6 +33,34 @@ the menu bar menu.
 The menu shows the last upload with its thumbnail; click it to copy its link
 again in your default format.
 
+## Clipboard History
+
+**Clipboard History** (from the menu, or its own shortcut) lists what you
+copied and every upload to R2, newest first, in a panel that keeps the app
+you were in at the front: pick an entry with ↩ and paste it there. It searches
+any part of the text, in Chinese as in English; ⌘P pins an entry to the top,
+⌘⌫ deletes it, and ⌘S saves it to the BlogWatcher inbox (text and links as
+they are, an image uploaded to R2 first with its recognised text).
+
+It is kept on this Mac only, in `~/Library/Application Support/R2Drop/Clipboard`,
+which is left out of Time Machine:
+
+- `history.sqlite` — the entries, with a trigram full-text index (SQLite FTS5)
+  and small thumbnails;
+- `images/` — copied images, each stored once under its SHA-256 however often
+  it is copied, and removed with the last entry that uses it.
+
+Settings → General sets how many entries to keep (50–500) and how long
+(7 days to 1 year, or forever); pinned entries are exempt from both.
+
+Some copies are never recorded: anything marked concealed or transient (the
+way password managers mark theirs), anything copied while a password manager
+or Keychain Access is in front, and anything that looks like a key, token or
+password, such as `sk-…`, `ghp_…` or AWS keys, JWTs, private keys,
+`API_KEY=…` lines, or a long random string. Copies from terminals can be left
+out too. The history from versions before the database is moved into it on
+first launch.
+
 ## Setup
 
 1. In the Cloudflare dashboard, create an R2 bucket and an S3 API token (Access

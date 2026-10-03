@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import R2DropKit
 import SwiftUI
 
 /// The clipboard history as a floating panel, like Spotlight: it takes the
@@ -73,12 +74,12 @@ private enum HistoryFilter: String, CaseIterable {
     case images = "Images"
     case uploads = "R2 Uploads"
 
-    func includes(_ entry: ClipboardEntry) -> Bool {
+    var kinds: Set<ClipboardEntry.Kind>? {
         switch self {
-        case .all: true
-        case .text: entry.kind == .text
-        case .images: entry.kind == .image
-        case .uploads: entry.kind == .upload
+        case .all: nil
+        case .text: [.text]
+        case .images: [.image]
+        case .uploads: [.upload]
         }
     }
 }
@@ -89,18 +90,20 @@ private struct ClipboardHistoryView: View {
     @State private var query = ""
     @State private var filter = HistoryFilter.all
     @State private var selection: UUID?
+    /// What the search and filter find, looked up in the database when either
+    /// changes, or the history does.
+    @State private var results: [ClipboardEntry] = []
     @FocusState private var isSearchFocused: Bool
+    private let canSaveToInbox = (try? AppSettings.inbox.validated()) != nil
 
     init(close: @escaping () -> Void) {
         self.close = close
     }
 
-    private var results: [ClipboardEntry] {
-        let words = query.lowercased().split(separator: " ")
-        return history.entries.filter { entry in
-            guard filter.includes(entry) else { return false }
-            let haystack = [entry.text, entry.title, entry.sourceApp ?? "", entry.url ?? ""].joined(separator: " ").lowercased()
-            return words.allSatisfy { haystack.contains($0) }
+    private func refresh() {
+        results = history.entries(matching: query, kinds: filter.kinds)
+        if !results.contains(where: { $0.id == selection }) {
+            selection = results.first?.id
         }
     }
 
@@ -146,10 +149,18 @@ private struct ClipboardHistoryView: View {
         .glassSurface(in: RoundedRectangle(cornerRadius: Metrics.panelRadius, style: .continuous), fallback: .regularMaterial)
         .onAppear {
             isSearchFocused = true
+            refresh()
             selection = results.first?.id
         }
-        .onChange(of: query) { selection = results.first?.id }
-        .onChange(of: filter) { selection = results.first?.id }
+        .onChange(of: query) {
+            refresh()
+            selection = results.first?.id
+        }
+        .onChange(of: filter) {
+            refresh()
+            selection = results.first?.id
+        }
+        .onChange(of: history.revision) { refresh() }
     }
 
     @ViewBuilder
@@ -168,7 +179,7 @@ private struct ClipboardHistoryView: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(results) { entry in
-                            ClipboardRow(entry: entry, isSelected: entry.id == selection)
+                            ClipboardRow(entry: entry, thumbnail: history.thumbnail(for: entry), isSelected: entry.id == selection)
                                 .id(entry.id)
                                 .contentShape(Rectangle())
                                 .onTapGesture { copy(entry) }
@@ -189,6 +200,26 @@ private struct ClipboardHistoryView: View {
             Text(results.count == 1 ? "1 item" : "\(results.count) items")
             Spacer()
             Text("↩ Copy")
+            Button(selected?.pinned == true ? "Unpin ⌘P" : "Pin ⌘P") {
+                if let entry = selected {
+                    history.setPinned(entry, !entry.pinned)
+                }
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(selected == nil)
+            if canSaveToInbox {
+                Button("BlogWatcher ⌘S") {
+                    if let entry = selected {
+                        close()
+                        Task { await history.saveToInbox(entry) }
+                    }
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(selected == nil || selected?.kind == .files)
+                .help("Save the selected item to your BlogWatcher inbox")
+            }
             Button("Delete ⌘⌫") {
                 if let entry = selected {
                     _ = move(1)
@@ -229,6 +260,7 @@ private struct ClipboardHistoryView: View {
 
 private struct ClipboardRow: View {
     let entry: ClipboardEntry
+    let thumbnail: NSImage?
     let isSelected: Bool
 
     var body: some View {
@@ -247,6 +279,12 @@ private struct ClipboardRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if entry.pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help("Pinned: stays at the top and is never removed")
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -273,7 +311,7 @@ private struct ClipboardRow: View {
         switch entry.kind {
         case .image, .upload:
             ZStack(alignment: .bottomTrailing) {
-                if let image = ClipboardHistory.thumbnail(entry) {
+                if let image = thumbnail {
                     Image(nsImage: image).resizable().scaledToFill()
                 } else {
                     symbol("photo")
