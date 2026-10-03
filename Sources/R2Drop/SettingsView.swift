@@ -131,13 +131,16 @@ private struct ShortcutsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 440)
+        .frame(width: 520, height: 500)
     }
 }
 
 private struct GeneralSettingsView: View {
     @State private var launchesAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @AppStorage(ClipboardHistory.enabledKey) private var recordsClipboard = true
+    @AppStorage(ClipboardHistory.limitKey) private var historyLimit = 200
+    @State private var isConfirmingClear = false
 
     var body: some View {
         Form {
@@ -148,6 +151,28 @@ private struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+            }
+            Section {
+                Toggle("Record what you copy", isOn: $recordsClipboard)
+                Picker("Keep", selection: $historyLimit) {
+                    ForEach(ClipboardHistory.limits, id: \.self) { Text("\($0) items").tag($0) }
+                }
+                .onChange(of: historyLimit) { ClipboardHistory.shared.trim() }
+                LabeledContent("History") {
+                    Button("Clear History…") { isConfirmingClear = true }
+                }
+                .confirmationDialog("Clear the clipboard history?", isPresented: $isConfirmingClear) {
+                    Button("Clear History", role: .destructive) { ClipboardHistory.shared.clear() }
+                } message: {
+                    Text("Every copied item and upload in it is removed from this Mac. Your uploads stay in R2.")
+                }
+            } header: {
+                Text("Clipboard History")
+            } footer: {
+                Text("Text, images and files you copy, and every upload to R2, kept on this Mac. Open it from the menu, or give Clipboard History a shortcut under Shortcuts. Copies that password managers mark as concealed are never recorded.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section {
                 LabeledContent("Screen Recording") {
@@ -169,7 +194,7 @@ private struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 300)
+        .frame(width: 520, height: 500)
     }
 
     private func open(_ anchor: String) {

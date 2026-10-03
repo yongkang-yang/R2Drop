@@ -4,7 +4,7 @@ import R2DropKit
 import SwiftUI
 
 enum Command: String, CaseIterable {
-    case captureAndUpload, uploadClipboard, uploadImage, uploadFinderSelection, showLastUpload, captureToInbox
+    case captureAndUpload, uploadClipboard, uploadImage, uploadFinderSelection, showLastUpload, captureToInbox, clipboardHistory
 
     var title: String {
         switch self {
@@ -14,6 +14,7 @@ enum Command: String, CaseIterable {
         case .uploadFinderSelection: "Upload Finder Selection"
         case .showLastUpload: "Preview Last Upload"
         case .captureToInbox: "Capture to BlogWatcher"
+        case .clipboardHistory: "Clipboard History"
         }
     }
 
@@ -25,6 +26,7 @@ enum Command: String, CaseIterable {
         case .uploadFinderSelection: "folder"
         case .showLastUpload: "eye"
         case .captureToInbox: "tray.and.arrow.down"
+        case .clipboardHistory: "list.clipboard"
         }
     }
 
@@ -36,6 +38,7 @@ enum Command: String, CaseIterable {
         case .uploadFinderSelection: "Upload the images selected in Finder."
         case .showLastUpload: "Preview the most recent upload and copy its link."
         case .captureToInbox: "Screenshot a region or window and save it, with its text, to your BlogWatcher inbox."
+        case .clipboardHistory: "Search what you copied and your R2 uploads, and copy any of it again."
         }
     }
 }
@@ -68,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
         installDropTarget()
+        ClipboardHistory.shared.start()
 
         for command in Command.allCases {
             HotKeyCenter.shared.register(command.rawValue) { [weak self] in self?.run(command) }
@@ -97,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .uploadFinderSelection: uploadFinderSelection()
         case .showLastUpload: showLastUpload()
         case .captureToInbox: captureToInbox()
+        case .clipboardHistory: ClipboardPanelController.shared.toggle()
         }
     }
 
@@ -292,6 +297,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.isEnabled = false
             menu.addItem(item)
         }
+
+        menu.addItem(.separator())
+        menu.addItem(commandItem(.clipboardHistory))
 
         menu.addItem(.separator())
         menu.addItem(sectionHeader("Upload"))

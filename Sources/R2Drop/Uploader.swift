@@ -138,7 +138,9 @@ enum Uploader {
         for file in files {
             do {
                 let result = try await upload(file, slug: files.count == 1 ? slug : nil, settings: settings)
-                links.append(format.format(url: result.url, filename: result.filename))
+                let link = format.format(url: result.url, filename: result.filename)
+                links.append(link)
+                ClipboardHistory.shared.recordUpload(result, link: link, image: file)
             } catch {
                 failures.append("\(file.lastPathComponent): \(error.localizedDescription)")
             }
@@ -146,6 +148,8 @@ enum Uploader {
         if !links.isEmpty {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(links.joined(separator: "\n"), forType: .string)
+            // Listed as uploads above; not again as copied text.
+            ClipboardHistory.shared.ignoreCurrentClipboard()
         }
         if let first = failures.first {
             let title = links.isEmpty ? "Upload failed" : "Uploaded \(links.count), \(failures.count) failed"
@@ -178,6 +182,7 @@ extension Uploader {
             // gets a longer random part than a shared one.
             async let text = TextRecognizer.text(in: file)
             let result = try await upload(file, hash: ObjectKey.randomHash(bytes: 8), settings: settings)
+            ClipboardHistory.shared.recordUpload(result, link: result.url, image: file)
             NotificationCenter.default.post(name: .lastUploadChanged, object: nil)
             try await InboxClient(settings: inbox).save(images: [result.url], text: await text)
             HUD.shared.show("Saved to BlogWatcher")
