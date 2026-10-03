@@ -12,12 +12,14 @@ enum AppSettings {
     static let inboxEndpointKey = "inboxEndpoint"
     static let inboxKeyAccount = "inboxKey"
 
-    static var r2: R2Settings {
+    static var r2: R2Settings { r2(secret: Keychain.read(secretAccount)) }
+
+    private static func r2(secret: String) -> R2Settings {
         let defaults = UserDefaults.standard
         return R2Settings(accountID: defaults.string(forKey: accountIDKey) ?? "",
                           bucket: defaults.string(forKey: bucketKey) ?? "",
                           accessKeyID: defaults.string(forKey: accessKeyIDKey) ?? "",
-                          secretAccessKey: Keychain.read(secretAccount),
+                          secretAccessKey: secret,
                           publicBaseURL: defaults.string(forKey: publicBaseURLKey) ?? "")
     }
 
@@ -25,11 +27,23 @@ enum AppSettings {
         OutputFormat(rawValue: UserDefaults.standard.string(forKey: formatKey) ?? "") ?? .markdown
     }
 
-    static var isConfigured: Bool { (try? r2.validated()) != nil }
+    // These two run at launch and every time the menu opens, so they only ask
+    // whether a secret is stored. Reading it can raise a keychain prompt, and
+    // one raised while the menu is open can't be typed into: the menu holds
+    // the keyboard while it waits for the prompt.
 
-    static var inbox: InboxSettings {
-        InboxSettings(endpoint: UserDefaults.standard.string(forKey: inboxEndpointKey) ?? "",
-                      key: Keychain.read(inboxKeyAccount))
+    static var isConfigured: Bool {
+        Keychain.contains(secretAccount) && (try? r2(secret: "stored").validated()) != nil
+    }
+
+    static var hasInbox: Bool {
+        Keychain.contains(inboxKeyAccount) && (try? inbox(key: "stored").validated()) != nil
+    }
+
+    static var inbox: InboxSettings { inbox(key: Keychain.read(inboxKeyAccount)) }
+
+    private static func inbox(key: String) -> InboxSettings {
+        InboxSettings(endpoint: UserDefaults.standard.string(forKey: inboxEndpointKey) ?? "", key: key)
     }
 }
 

@@ -298,7 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for command in [Command.captureAndUpload, .uploadClipboard, .uploadImage, .uploadFinderSelection] {
             menu.addItem(commandItem(command))
         }
-        if (try? AppSettings.inbox.validated()) != nil {
+        if AppSettings.hasInbox {
             menu.addItem(.separator())
             menu.addItem(commandItem(.captureToInbox))
         }
