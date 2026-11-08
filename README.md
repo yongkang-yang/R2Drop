@@ -113,5 +113,5 @@ copy. Pass `--no-install` to stop at `build/`. The icon is drawn by
 
 ## License
 
-[GPL-3.0-or-later](LICENSE). Cloudflare and R2 are trademarks of Cloudflare,
+[MIT](LICENSE). Cloudflare and R2 are trademarks of Cloudflare,
 Inc.; this is an unofficial client.
