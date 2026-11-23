@@ -115,14 +115,23 @@ copy. Pass `--no-install` to stop at `build/`. The icon is drawn by
 
 Building with only the Command Line Tools fails on newer SDKs (SwiftUI's
 macros ship with Xcode). Every CI run uploads the bundle as the `R2Drop-app`
-artifact instead: download it, then re-sign and install it on the Mac.
+artifact instead. It is built on an arm64 runner, so it runs on Apple silicon
+only. Download it, re-sign it with your certificate and install it:
 
 ```sh
-gh run download -R yongkang-yang/R2Drop -n R2Drop-app -D /tmp/r2drop
-ditto -x -k /tmp/r2drop/R2Drop.zip /tmp/r2drop
-# pick a hash from: security find-identity -v -p codesigning
-codesign --force --sign <SHA-1> --identifier nl.yongkang.r2drop /tmp/r2drop/R2Drop.app
-ditto /tmp/r2drop/R2Drop.app /Applications/R2Drop.app
+dir=$(mktemp -d)
+gh run download -R yongkang-yang/R2Drop -n R2Drop-app -D "$dir"
+ditto -x -k "$dir/R2Drop.zip" "$dir"
+# A certificate hash from `security find-identity -v -p codesigning`; keep the
+# one earlier builds used so privacy grants and the keychain item survive.
+# With no certificate, use "-" (ad-hoc): grants then reset on every install.
+identity="<SHA-1>"
+codesign --force --sign "$identity" --identifier nl.yongkang.r2drop "$dir/R2Drop.app"
+osascript -e 'quit app "R2Drop"' 2>/dev/null || true
+while pgrep -x R2Drop >/dev/null; do sleep 0.2; done
+rm -rf /Applications/R2Drop.app
+ditto "$dir/R2Drop.app" /Applications/R2Drop.app
+open /Applications/R2Drop.app
 ```
 
 ## License
