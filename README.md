@@ -120,7 +120,8 @@ artifact instead: download it, then re-sign and install it on the Mac.
 ```sh
 gh run download -R yongkang-yang/R2Drop -n R2Drop-app -D /tmp/r2drop
 ditto -x -k /tmp/r2drop/R2Drop.zip /tmp/r2drop
-codesign --force --sign "Apple Development" --identifier nl.yongkang.r2drop /tmp/r2drop/R2Drop.app
+# pick a hash from: security find-identity -v -p codesigning
+codesign --force --sign <SHA-1> --identifier nl.yongkang.r2drop /tmp/r2drop/R2Drop.app
 ditto /tmp/r2drop/R2Drop.app /Applications/R2Drop.app
 ```
 
