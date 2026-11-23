@@ -35,3 +35,16 @@ jobs:
 
       - name: Build app bundle
         run: ./Scripts/bundle.sh --no-install
+
+      - name: Zip app bundle
+        # ditto keeps the bundle's symlinks, extended attributes and signature.
+        run: ditto -c -k --keepParent build/R2Drop.app build/R2Drop.zip
+
+      - name: Upload app bundle
+        # Lets a Mac without Xcode install a CI build: download it, re-sign
+        # it with the local certificate and copy it to /Applications.
+        uses: actions/upload-artifact@v4
+        with:
+          name: R2Drop-app
+          path: build/R2Drop.zip
+          retention-days: 30
