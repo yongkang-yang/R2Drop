@@ -111,6 +111,19 @@ installs it over `/Applications/R2Drop.app`, quitting and relaunching a running
 copy. Pass `--no-install` to stop at `build/`. The icon is drawn by
 `swift Scripts/make-icon.swift`.
 
+### Installing a CI build (no Xcode)
+
+Building with only the Command Line Tools fails on newer SDKs (SwiftUI's
+macros ship with Xcode). Every CI run uploads the bundle as the `R2Drop-app`
+artifact instead: download it, then re-sign and install it on the Mac.
+
+```sh
+gh run download -R yongkang-yang/R2Drop -n R2Drop-app -D /tmp/r2drop
+ditto -x -k /tmp/r2drop/R2Drop.zip /tmp/r2drop
+codesign --force --sign "Apple Development" --identifier nl.yongkang.r2drop /tmp/r2drop/R2Drop.app
+ditto /tmp/r2drop/R2Drop.app /Applications/R2Drop.app
+```
+
 ## License
 
 [MIT](LICENSE). Cloudflare and R2 are trademarks of Cloudflare,
